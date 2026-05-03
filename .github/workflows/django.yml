@@ -183,8 +183,8 @@ jobs:
             echo "✅ Step 13: Starting services"
             echo "========================================="
 
-            # echo "🔵 Starting Celery worker..."
-            # nohup "$VENV_PATH/bin/celery" -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &
+            echo "🔵 Starting Celery worker..."
+            nohup "$VENV_PATH/bin/celery" -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &
 
             sleep 2
 
