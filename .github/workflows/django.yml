@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to Server via SSH and tmux
+      - name: Deploy Django via SSH and tmux
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
@@ -20,176 +20,195 @@ jobs:
           script: |
             set -e
 
-            echo "========================================="
-            echo "🚀 Starting Django Deployment"
-            echo "========================================="
-
             TMUX_SESSION="asses"
             TMUX_TARGET="${TMUX_SESSION}:0.0"
+            DEPLOY_SCRIPT="/tmp/pixii_deploy.sh"
 
             PROJECT_DIR="$HOME/PixiiAssigment/backend"
             VENV_PATH="$HOME/PixiiAssigment/backend/venv"
 
-            echo "📂 HOME: $HOME"
-            echo "📂 PROJECT_DIR: $PROJECT_DIR"
-            echo "🐍 VENV_PATH: $VENV_PATH"
+            echo "========================================="
+            echo "🚀 Preparing tmux deployment"
+            echo "========================================="
+            echo "TMUX_TARGET=${TMUX_TARGET}"
+            echo "PROJECT_DIR=${PROJECT_DIR}"
+            echo "VENV_PATH=${VENV_PATH}"
+            echo "DEPLOY_SCRIPT=${DEPLOY_SCRIPT}"
+            echo "========================================="
 
-            echo "🔍 Checking tmux session: ${TMUX_SESSION}"
+            command -v tmux >/dev/null 2>&1 || apt update && apt install -y tmux
 
             if ! tmux has-session -t "${TMUX_SESSION}" 2>/dev/null; then
-              echo "Creating tmux session '${TMUX_SESSION}'..."
               tmux new-session -s "${TMUX_SESSION}" -d
-              echo "✅ Session created"
-            else
-              echo "✅ Session already exists"
             fi
 
             tmux select-window -t "${TMUX_SESSION}:0"
             tmux select-pane -t "${TMUX_TARGET}"
 
-            send_line() {
-              local cmd="$1"
-              local wait_time="${2:-2}"
+            cat > "${DEPLOY_SCRIPT}" <<'DEPLOY_EOF'
+            #!/usr/bin/env bash
+            set -e
+            set -o pipefail
 
-              echo "➡️  tmux ${TMUX_TARGET}: ${cmd}"
-              tmux send-keys -t "${TMUX_TARGET}" -- "${cmd}" C-m
-              sleep "${wait_time}"
-            }
+            PROJECT_DIR="$HOME/PixiiAssigment/backend"
+            VENV_PATH="$HOME/PixiiAssigment/backend/venv"
 
-            echo ""
             echo "========================================="
-            echo "📤 Sending commands line-by-line to tmux"
-            echo "Target: ${TMUX_TARGET}"
+            echo "🚀 Django Deployment Started"
             echo "========================================="
-            echo ""
+            date
 
-            # Make sure pane is not stuck inside old running process
-            tmux send-keys -t "${TMUX_TARGET}" C-c
+            echo "📂 HOME: $HOME"
+            echo "📂 PROJECT_DIR: $PROJECT_DIR"
+            echo "🐍 VENV_PATH: $VENV_PATH"
+
+            echo "========================================="
+            echo "🛑 Step 1: Stopping app services safely"
+            echo "========================================="
+
+            echo "Stopping anything using port 8000..."
+            if command -v lsof >/dev/null 2>&1; then
+              lsof -ti:8000 | xargs -r kill -TERM || true
+              sleep 2
+              lsof -ti:8000 | xargs -r kill -9 || true
+            else
+              fuser -k 8000/tcp || true
+            fi
+
+            echo "Stopping Celery workers..."
+            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
+            sleep 2
+            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -9 || true
+
+            echo "Stopping Celery beat..."
+            ps -eo pid,args | awk '/celery -A config beat/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
             sleep 1
+            ps -eo pid,args | awk '/celery -A config beat/ && !/awk/ {print $1}' | xargs -r kill -9 || true
 
-            send_line "clear" 1
+            echo "Stopping Gunicorn if running..."
+            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
+            sleep 1
+            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -9 || true
 
-            send_line "echo '========================================='" 1
-            send_line "echo '🚀 Django Deployment Started'" 1
-            send_line "echo '========================================='" 1
-            send_line "date" 1
+            echo "✅ App services stopped"
 
-            send_line "echo '📂 Project directory: ${PROJECT_DIR}'" 1
-            send_line "echo '🐍 Virtualenv path: ${VENV_PATH}'" 1
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🛑 Step 1: Stopping app services safely'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "pkill -f '[p]ython manage.py runserver' || true" 2
-            send_line "pkill -f '[g]unicorn' || true" 2
-            send_line "pkill -f '[c]elery -A config worker' || true" 2
-            send_line "pkill -f '[c]elery -A config beat' || true" 2
-
-            send_line "echo '✅ App services stopped'" 1
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🔴 Step 2: Ensuring Redis is running'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "systemctl enable redis-server || true" 2
-            send_line "systemctl restart redis-server || systemctl restart redis || true" 3
-            send_line "redis-cli ping || true" 2
-
-            send_line "echo '========================================='" 1
-            send_line "echo '📂 Step 3: Entering project directory'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "cd ${PROJECT_DIR}" 1
-            send_line "pwd" 1
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🔄 Step 4: Pulling latest code'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "git fetch origin main" 5
-            send_line "git reset --hard origin/main" 5
-            send_line "git status" 2
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🐍 Step 5: Preparing virtual environment'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "test -d ${VENV_PATH} || python3 -m venv ${VENV_PATH}" 4
-            send_line "source ${VENV_PATH}/bin/activate" 1
-            send_line "python --version" 1
-            send_line "pip --version" 1
-
-            send_line "echo '========================================='" 1
-            send_line "echo '📦 Step 6: Installing dependencies'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "pip install --upgrade pip" 8
-            send_line "pip install -r requirements.txt" 35
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🗄️ Step 7: Running migrations'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "python manage.py makemigrations" 8
-            send_line "python manage.py migrate" 12
-
-            send_line "echo '========================================='" 1
-            send_line "echo '📊 Step 8: Collecting static files'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "python manage.py collectstatic --noinput" 10
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🧪 Step 9: Running Django checks'" 1
-            send_line "echo '========================================='" 1"
-
-            send_line "python manage.py check" 6
-
-            send_line "echo '========================================='" 1
-            send_line "echo '✅ Step 10: Starting services'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "echo '🔵 Starting Celery worker...'" 1
-            send_line "nohup ${VENV_PATH}/bin/celery -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &" 3
-
-            send_line "echo '🟢 Starting Django server...'" 1
-            send_line "nohup ${VENV_PATH}/bin/python manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &" 3
-
-            send_line "echo '========================================='" 1
-            send_line "echo '🌐 Step 11: Reloading Nginx'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "nginx -t" 3
-            send_line "systemctl reload nginx" 2
-
-            send_line "echo '========================================='" 1
-            send_line "echo '📍 Step 12: Service status'" 1
-            send_line "echo '========================================='" 1
-
-            send_line "ps aux | grep -E '[r]unserver|[c]elery' || true" 2
-            send_line "systemctl status redis-server --no-pager || systemctl status redis --no-pager || true" 2
-            send_line "systemctl status nginx --no-pager || true" 2
-
-            send_line "echo '========================================='" 1
-            send_line "echo '✅ Deployment Complete!'" 1
-            send_line "echo '========================================='" 1
-            send_line "echo '📍 Commands executed in tmux pane: asses:0.0'" 1
-            send_line "echo '🔍 Attach with: tmux attach -t asses'" 1
-            send_line "echo '📊 Logs:'" 1
-            send_line "echo '   tail -f /tmp/django.log'" 1
-            send_line "echo '   tail -f /tmp/celery.log'" 1
-            send_line "echo '========================================='" 1
-
-            echo ""
             echo "========================================="
-            echo "✅ WORKFLOW FINISHED SENDING COMMANDS"
+            echo "🔴 Step 2: Ensuring Redis is running"
             echo "========================================="
-            echo "📍 tmux target: ${TMUX_TARGET}"
-            echo "🔍 SSH into server and run:"
-            echo "   tmux attach -t asses"
-            echo ""
+
+            systemctl enable redis-server || true
+            systemctl restart redis-server || systemctl restart redis || true
+            redis-cli ping || true
+
+            echo "========================================="
+            echo "📂 Step 3: Entering project directory"
+            echo "========================================="
+
+            cd "$PROJECT_DIR"
+            pwd
+
+            echo "========================================="
+            echo "🔄 Step 4: Pulling latest code"
+            echo "========================================="
+
+            git fetch origin main
+            git reset --hard origin/main
+            git status
+
+            echo "========================================="
+            echo "🐍 Step 5: Preparing virtual environment"
+            echo "========================================="
+
+            test -d "$VENV_PATH" || python3 -m venv "$VENV_PATH"
+
+            source "$VENV_PATH/bin/activate"
+            python --version
+            pip --version
+
+            echo "========================================="
+            echo "📦 Step 6: Installing dependencies"
+            echo "========================================="
+
+            pip install --upgrade pip
+            pip install -r requirements.txt
+
+            echo "========================================="
+            echo "🗄️ Step 7: Running migrations"
+            echo "========================================="
+
+            python manage.py makemigrations
+            python manage.py migrate
+
+            echo "========================================="
+            echo "📊 Step 8: Collecting static files"
+            echo "========================================="
+
+            python manage.py collectstatic --noinput
+
+            echo "========================================="
+            echo "🧪 Step 9: Running Django checks"
+            echo "========================================="
+
+            python manage.py check
+
+            echo "========================================="
+            echo "✅ Step 10: Starting services"
+            echo "========================================="
+
+            echo "🔵 Starting Celery worker..."
+            nohup "$VENV_PATH/bin/celery" -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &
+
+            sleep 2
+
+            echo "🟢 Starting Django server..."
+            nohup "$VENV_PATH/bin/python" manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &
+
+            sleep 2
+
+            echo "========================================="
+            echo "🌐 Step 11: Reloading Nginx"
+            echo "========================================="
+
+            nginx -t
+            systemctl reload nginx
+
+            echo "========================================="
+            echo "📍 Step 12: Service status"
+            echo "========================================="
+
+            ps aux | grep -E '[r]unserver|[c]elery' || true
+            systemctl status redis-server --no-pager || systemctl status redis --no-pager || true
+            systemctl status nginx --no-pager || true
+
+            echo "========================================="
+            echo "✅ Deployment Complete!"
+            echo "========================================="
             echo "📊 Logs:"
             echo "   tail -f /tmp/django.log"
             echo "   tail -f /tmp/celery.log"
+            echo "========================================="
+            DEPLOY_EOF
+
+            chmod +x "${DEPLOY_SCRIPT}"
+
+            echo "========================================="
+            echo "📤 Sending deploy script execution to tmux"
+            echo "Target: ${TMUX_TARGET}"
+            echo "========================================="
+
+            tmux send-keys -t "${TMUX_TARGET}" C-c
+            sleep 1
+            tmux send-keys -t "${TMUX_TARGET}" "clear" Enter
+            sleep 1
+            tmux send-keys -t "${TMUX_TARGET}" "bash -x ${DEPLOY_SCRIPT}" Enter
+
+            echo "========================================="
+            echo "✅ Deploy command sent to tmux"
+            echo "========================================="
+            echo "Attach to server and watch:"
+            echo "tmux attach -t ${TMUX_SESSION}"
+            echo ""
+            echo "Logs:"
+            echo "tail -f /tmp/django.log"
+            echo "tail -f /tmp/celery.log"
             echo "========================================="
