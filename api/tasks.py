@@ -6,7 +6,7 @@ File: api/tasks.py
 
 from celery import shared_task
 from .scraper import process_analysis
-
+from celery.signals import worker_shutdown
 
 @shared_task(bind=True)
 def scrape_amazon_listing_task(self, task_id):
@@ -23,3 +23,14 @@ def scrape_amazon_listing_task(self, task_id):
     - database saving
     """
     return process_analysis(task_id)
+
+@worker_shutdown.connect
+def cleanup_on_shutdown(sender=None, **kwargs):
+    """
+    Clean up Playwright browser when Celery worker shuts down.
+    """
+    from api.scraper import cleanup_browser
+    
+    print("[CELERY] Shutting down Playwright browser...")
+    cleanup_browser()
+    print("[CELERY] Playwright cleanup complete")

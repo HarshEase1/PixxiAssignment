@@ -8,7 +8,13 @@ import html
 import random
 import re
 import time
+import os
 from urllib.parse import quote_plus
+os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+from asgiref.sync import sync_to_async
+import asyncio
+
+
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,6 +27,7 @@ import base64
 import os
 import uuid
 from io import BytesIO
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 from PIL import Image
 # ============================================================================
@@ -31,6 +38,9 @@ AMAZON_BASE_URL = "https://www.amazon.in"
 
 REQUEST_TIMEOUT = 15
 MAX_COMPETITORS = 3
+_playwright_instance = None
+_browser_instance = None
+
 
 COMMON_HEADERS = {
     "User-Agent": (
@@ -377,91 +387,303 @@ def update_task(task, status, progress, message, error=None):
     if error is not None:
         task.error = error
 
-    task.save(update_fields=["status", "progress", "message", "error", "updated_at"])
-
+    # Force synchronous save even in async context
+    try:
+        task.save(update_fields=["status", "progress", "message", "error", "updated_at"])
+    except Exception as e:
+        # If we're in async context, use sync_to_async
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in async context - need to run in executor
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor() as executor:
+                    executor.submit(
+                        task.save,
+                        update_fields=["status", "progress", "message", "error", "updated_at"]
+                    ).result()
+            else:
+                raise e
+        except RuntimeError:
+            # No event loop - just raise original error
+            raise e
 
 # ============================================================================
 # SCRAPING
 # ============================================================================
 
-def scrape_product(asin):
+def get_browser():
     """
-    Scrape product details from Amazon product page.
+    Get or create a persistent browser instance.
+    Reusing browser is more efficient than creating new one each time.
+    """
+    global _playwright_instance, _browser_instance
+    
+    if _browser_instance is None or not _browser_instance.is_connected():
+        print("[PLAYWRIGHT] Creating new browser instance...")
+        
+        if _playwright_instance is None:
+            _playwright_instance = sync_playwright().start()
+        
+        _browser_instance = _playwright_instance.chromium.launch(
+            headless=True,  # Run without GUI
+            args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-blink-features=AutomationControlled',
+            ]
+        )
+        
+        print("[PLAYWRIGHT] Browser instance created")
+    
+    return _browser_instance
+
+def scrape_product_reviews_with_playwright(asin, max_reviews=10):
+    """
+    Scrape reviews using Playwright (more reliable than requests).
     """
     asin = asin.upper().strip()
-    url = f"{AMAZON_BASE_URL}/dp/{asin}"
-
+    review_url = f"{AMAZON_BASE_URL}/product-reviews/{asin}/?reviewerType=all_reviews&sortBy=recent&pageNumber=1"
+    
+    browser = None
+    context = None
+    page = None
+    
     try:
-        time.sleep(random.uniform(1.5, 3.5))
-
-        session = requests.Session()
-
-        headers = {
-            **COMMON_HEADERS,
-            "Referer": "https://www.amazon.in/",
-        }
-
-        response = session.get(
-            url,
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
-            allow_redirects=True,
+        print(f"[PLAYWRIGHT REVIEWS] Fetching reviews for ASIN {asin}")
+        
+        time.sleep(random.uniform(3, 6))
+        
+        browser = get_browser()
+        
+        context = browser.new_context(
+            viewport={'width': 1920, 'height': 1080},
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
         )
-
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        if is_blocked_page(soup, response.text):
-            print(f"[BLOCKED] Amazon blocked product page for ASIN {asin}")
-            return None
-
-        product_reviews = extract_visible_reviews_from_product_page(
-            soup,
-            asin,
-            max_reviews=10,
-        )
-
-        product_reviews = extract_visible_reviews_from_product_page(
-            soup,
-            asin,
-            max_reviews=10,
-        )
-
-        if not product_reviews:
-            print(
-                f"[REVIEWS] No visible reviews found on product page for {asin}, "
-                "trying review page fallback..."
-            )
-            product_reviews = scrape_product_reviews(asin, max_reviews=10)
-
-        print(f"[PRODUCT REVIEWS FINAL] ASIN={asin} reviews_count={len(product_reviews)}")
-
-        return {
-            "asin": asin,
-            "title": extract_title(soup),
-            "bullets": extract_bullets(soup),
-            "description": extract_description(soup),
-            "price": extract_price(soup),
-            "rating": extract_rating(soup),
-            "reviews_count": extract_reviews_count(soup),
-            "url": url,
-            "image_url": extract_image(soup),
-            "reviews": product_reviews,
-        }
-
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code if e.response else "unknown"
-        print(f"[HTTP ERROR] ASIN={asin} status={status_code} error={e}")
-        return None
-
-    except requests.exceptions.RequestException as e:
-        print(f"[REQUEST ERROR] ASIN={asin} error={e}")
-        return None
-
+        
+        page = context.new_page()
+        
+        response = page.goto(review_url, wait_until='domcontentloaded', timeout=30000)
+        
+        if response.status >= 400:
+            print(f"[PLAYWRIGHT REVIEWS] HTTP Error: {response.status}")
+            return []
+        
+        time.sleep(random.uniform(2, 4))
+        
+        html_content = page.content()
+        soup = BeautifulSoup(html_content, "html.parser")
+        
+        if is_blocked_page(soup, html_content):
+            print(f"[PLAYWRIGHT REVIEWS BLOCKED] ASIN={asin}")
+            return []
+        
+        # Extract reviews
+        review_containers = find_review_containers(soup)
+        print(f"[PLAYWRIGHT REVIEWS] Found {len(review_containers)} review containers")
+        
+        reviews = []
+        for container in review_containers:
+            if len(reviews) >= max_reviews:
+                break
+            
+            review = extract_review_from_container(container)
+            if review and review.get("body"):
+                reviews.append(review)
+        
+        print(f"[PLAYWRIGHT REVIEWS SUCCESS] Extracted {len(reviews)} reviews for ASIN {asin}")
+        
+        return reviews[:max_reviews]
+        
     except Exception as e:
-        print(f"[SCRAPE PRODUCT ERROR] ASIN={asin} error={e}")
-        return None
+        print(f"[PLAYWRIGHT REVIEWS ERROR] ASIN={asin} error={e}")
+        return []
+    
+    finally:
+        if page:
+            try:
+                page.close()
+            except:
+                pass
+        
+        if context:
+            try:
+                context.close()
+            except:
+                pass
+
+def cleanup_browser():
+    """
+    Clean up browser instance (call this when shutting down).
+    """
+    global _playwright_instance, _browser_instance
+    
+    if _browser_instance:
+        try:
+            _browser_instance.close()
+        except:
+            pass
+        _browser_instance = None
+    
+    if _playwright_instance:
+        try:
+            _playwright_instance.stop()
+        except:
+            pass
+        _playwright_instance = None
+
+def scrape_product(asin, retries=3):
+    """
+    Scrape product details from Amazon using Playwright (headless browser).
+    More reliable than requests as it executes JavaScript like a real browser.
+    """
+    asin = asin.upper().strip()
+    amazon_url = f"{AMAZON_BASE_URL}/dp/{asin}"
+
+    for attempt in range(retries):
+        browser = None
+        context = None
+        page = None
+        
+        try:
+            # Add delay between attempts
+            if attempt > 0:
+                backoff = (2 ** attempt) * 5 + random.uniform(3, 8)
+                print(f"[RETRY] Attempt {attempt + 1}/{retries}, waiting {backoff:.1f}s...")
+                time.sleep(backoff)
+            else:
+                # Human-like delay
+                time.sleep(random.uniform(3, 7))
+
+            print(f"[PLAYWRIGHT] Fetching ASIN={asin} (attempt {attempt + 1}/{retries})")
+            
+            # Get persistent browser
+            browser = get_browser()
+            
+            # Create new context (like incognito mode - fresh cookies each time)
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080},
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                ),
+                locale='en-IN',
+                timezone_id='Asia/Kolkata',
+            )
+            
+            # Create new page
+            page = context.new_page()
+            
+            # Set extra headers
+            page.set_extra_http_headers({
+                "Accept-Language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            })
+            
+            # Navigate to product page
+            print(f"[PLAYWRIGHT] Loading page: {amazon_url}")
+            
+            response = page.goto(
+                amazon_url,
+                wait_until='domcontentloaded',  # Wait for DOM
+                timeout=30000  # 30 second timeout
+            )
+            
+            # Check response status
+            if response.status >= 400:
+                print(f"[PLAYWRIGHT] HTTP Error: {response.status}")
+                raise Exception(f"HTTP {response.status}")
+            
+            # Wait a bit for dynamic content
+            time.sleep(random.uniform(2, 4))
+            
+            # Get page HTML
+            html_content = page.content()
+            
+            # Parse with BeautifulSoup
+            soup = BeautifulSoup(html_content, "html.parser")
+
+            # Check if blocked
+            if is_blocked_page(soup, html_content):
+                print(f"[BLOCKED] Amazon blocked request for ASIN {asin} (attempt {attempt + 1})")
+                
+                # Save screenshot for debugging
+                screenshot_path = f"/tmp/blocked_{asin}_{attempt}.png"
+                page.screenshot(path=screenshot_path)
+                print(f"[DEBUG] Saved screenshot: {screenshot_path}")
+                
+                if attempt < retries - 1:
+                    continue
+                else:
+                    return None
+
+            # Extract reviews
+            product_reviews = extract_visible_reviews_from_product_page(
+                soup,
+                asin,
+                max_reviews=10,
+            )
+
+            if not product_reviews:
+                print(
+                    f"[REVIEWS] No visible reviews found on product page for {asin}, "
+                    "trying review page fallback..."
+                )
+                product_reviews = scrape_product_reviews_with_playwright(asin, max_reviews=10)
+
+            print(f"[SUCCESS] ASIN={asin} scraped successfully (attempt {attempt + 1})")
+            print(f"[PRODUCT REVIEWS FINAL] ASIN={asin} reviews_count={len(product_reviews)}")
+
+            # Extract product data
+            product_data = {
+                "asin": asin,
+                "title": extract_title(soup),
+                "bullets": extract_bullets(soup),
+                "description": extract_description(soup),
+                "price": extract_price(soup),
+                "rating": extract_rating(soup),
+                "reviews_count": extract_reviews_count(soup),
+                "url": amazon_url,
+                "image_url": extract_image(soup),
+                "reviews": product_reviews,
+            }
+
+            return product_data
+
+        except PlaywrightTimeout:
+            print(f"[TIMEOUT] Page load timeout for ASIN {asin} (attempt {attempt + 1})")
+            
+            if attempt == retries - 1:
+                return None
+
+        except Exception as e:
+            print(f"[PLAYWRIGHT ERROR] ASIN={asin} error={e} (attempt {attempt + 1})")
+            
+            if attempt == retries - 1:
+                return None
+
+        finally:
+            # Clean up page and context (but keep browser alive)
+            if page:
+                try:
+                    page.close()
+                except:
+                    pass
+            
+            if context:
+                try:
+                    context.close()
+                except:
+                    pass
+
+    return None
 
 def extract_review_card(card):
     """
@@ -1110,7 +1332,8 @@ def analyze_product_images_with_gemini(your_product, competitors):
     Compares YOUR image vs COMPETITOR images and recommends improvements.
     """
     try:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
         
         api_key = getattr(settings, "GOOGLE_GEMINI_API_KEY", None)
         
@@ -1118,9 +1341,8 @@ def analyze_product_images_with_gemini(your_product, competitors):
             print("[GEMINI] API key missing, skipping image analysis")
             return ""
         
-        # Configure Gemini
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Configure Gemini with NEW package
+        client = genai.Client(api_key=api_key)
         
         # Get image URLs
         your_image_url = your_product.get('image_url')
@@ -1191,14 +1413,22 @@ Be VERY specific. Don't say "improve image" - say "Add lifestyle shot showing pr
 """)
         
         print("[GEMINI] Analyzing product images...")
-        response = model.generate_content("".join(prompt_parts))
+        
+        # Use NEW API with gemini-2.0-flash-exp (FREE model)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents="".join(prompt_parts)
+        )
         
         print("[GEMINI] Image analysis complete")
         return "\n\n" + response.text
         
     except Exception as e:
         print(f"[GEMINI ERROR] {e}")
+        import traceback
+        traceback.print_exc()
         return "\n\n## IMAGE ANALYSIS\nImage analysis unavailable"
+    
     
 def improve_product_image_with_openai(product, competitors=None):
     """

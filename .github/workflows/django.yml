@@ -79,9 +79,12 @@ jobs:
             echo "========================================="
 
             apt update
-            apt install -y git python3 python3-venv python3-pip redis-server nginx lsof
+            apt install -y git python3 python3-venv python3-pip redis-server nginx lsof \
+              libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
+              libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+              libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libatspi2.0-0t64
 
-            echo "✅ System packages installed"
+            echo "✅ System packages installed (including Playwright dependencies)"
 
             echo "========================================="
             echo "🛑 Step 2: Stopping app services safely"
@@ -104,10 +107,10 @@ jobs:
             sleep 1
             ps -eo pid,args | awk '/celery -A config beat/ && !/awk/ {print $1}' | xargs -r kill -9 || true
 
-            echo "Stopping Gunicorn if running..."
-            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
+            echo "Stopping Celery worker..."
+            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
             sleep 1
-            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -9 || true
+            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -9 || true
 
             echo "✅ App services stopped"
 
@@ -168,6 +171,18 @@ jobs:
             pip install -r requirements.txt
 
             echo "========================================="
+            echo "🎭 Step 9.5: Installing Playwright browser"
+            echo "========================================="
+
+            echo "Installing Playwright Chromium browser..."
+            playwright install chromium
+
+            echo "Installing Playwright system dependencies..."
+            playwright install-deps chromium
+
+            echo "✅ Playwright browser installed"
+
+            echo "========================================="
             echo "🗄️ Step 10: Running migrations"
             echo "========================================="
 
@@ -214,7 +229,7 @@ jobs:
             echo "📍 Step 15: Service status"
             echo "========================================="
 
-            ps aux | grep -E '[r]unserver|[c]elery' || true
+            ps aux | grep -E '[g]unicorn|[c]elery' || true
             systemctl status redis-server --no-pager || true
             systemctl status nginx --no-pager || true
 
@@ -225,8 +240,7 @@ jobs:
             echo "   tail -f /root/logs/gunicorn.log"
             echo "   tail -f /root/logs/gunicorn-error.log"
             echo "   tail -f /root/logs/gunicorn-access.log"
-            echo "   tail -f /root/logs/celery.log"
-            echo "   tail -f /root/logs/celery-nohup.log"
+            echo "   tail -f /tmp/celery.log"
             echo ""
             echo "🌐 Test API:"
             echo "   curl http://127.0.0.1:8000/api/health/"
@@ -256,6 +270,5 @@ jobs:
             echo "tail -f /root/logs/gunicorn.log"
             echo "tail -f /root/logs/gunicorn-error.log"
             echo "tail -f /root/logs/gunicorn-access.log"
-            echo "tail -f /root/logs/celery.log"
-            echo "tail -f /root/logs/celery-nohup.log"
+            echo "tail -f /tmp/celery.log"
             echo "========================================="
