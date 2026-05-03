@@ -88,17 +88,15 @@ jobs:
 
             echo "Stopping anything using port 8000..."
             if command -v lsof >/dev/null 2>&1; then
-              lsof -ti:8000 | xargs -r kill -TERM || true
-              sleep 2
-              lsof -ti:8000 | xargs -r kill -9 || true
-            else
-              fuser -k 8000/tcp || true
+            lsof -ti:8000 | xargs -r kill -TERM || true
+            sleep 2
+            lsof -ti:8000 | xargs -r kill -9 || true
             fi
 
-            echo "Stopping Celery workers..."
-            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
-            sleep 2
-            ps -eo pid,args | awk '/celery -A config worker/ && !/awk/ {print $1}' | xargs -r kill -9 || true
+            echo "Stopping Gunicorn..."
+            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
+            sleep 1
+            ps -eo pid,args | awk '/gunicorn/ && !/awk/ {print $1}' | xargs -r kill -9 || true
 
             echo "Stopping Celery beat..."
             ps -eo pid,args | awk '/celery -A config beat/ && !/awk/ {print $1}' | xargs -r kill -TERM || true
@@ -190,8 +188,14 @@ jobs:
 
             sleep 2
 
-            echo "🟢 Starting Django server..."
-            nohup "$VENV_PATH/bin/python" manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &
+            echo "🟢 Starting Gunicorn server..."
+            nohup "$VENV_PATH/bin/gunicorn" config.wsgi:application \
+            --bind 127.0.0.1:8000 \
+            --workers 2 \
+            --timeout 600 \
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log \
+            > /tmp/django.log 2>&1 &
 
             sleep 2
 
