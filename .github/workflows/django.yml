@@ -176,12 +176,6 @@ jobs:
             python manage.py migrate
 
             echo "========================================="
-            echo "📊 Step 11: Collecting static files"
-            echo "========================================="
-
-            python manage.py collectstatic --noinput
-
-            echo "========================================="
             echo "🧪 Step 12: Running Django checks"
             echo "========================================="
 
