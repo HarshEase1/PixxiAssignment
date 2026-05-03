@@ -26,126 +26,148 @@ jobs:
             PROJECT_DIR="/home/${{ secrets.SERVER_USER }}/PixiiAssigment/backend"
             VENV_PATH="/home/${{ secrets.SERVER_USER }}/PixiiAssigment/backend/venv"
             
-            # Function to send command to tmux pane and wait
-            send_to_tmux() {
-              tmux send-keys -t asses:0.0 "$1" C-m
-              sleep 3
-            }
-            
+            # Check if tmux session exists, create if not
             echo "🔍 Checking tmux session..."
             if ! tmux has-session -t asses 2>/dev/null; then
               echo "Creating tmux session 'asses'..."
               tmux new-session -s asses -d
               echo "✅ Session created!"
             else
-              echo "✅ Session 'asses' already exists"
+              echo "✅ Session 'asses' exists"
             fi
             
+            # Function to send command to tmux and wait
+            send_cmd() {
+              tmux send-keys -t asses:0.0 "$1" C-m
+              sleep 2
+            }
+            
+            echo ""
             echo "========================================="
-            echo "🛑 Step 1: Stopping All Services"
+            echo "📤 Sending deployment commands to tmux"
             echo "========================================="
             
-            # Kill all background processes in pane 0
-            send_to_tmux "pkill -f 'python manage.py runserver' || true"
-            send_to_tmux "pkill -f 'celery -A config worker' || true"
-            send_to_tmux "pkill -f 'redis-server' || true"
-            sleep 3
+            # Clear screen first
+            send_cmd "clear"
             
-            echo "========================================="
-            echo "📂 Step 2: Navigating to Project"
-            echo "========================================="
+            # Step 1: Show banner
+            send_cmd "echo '========================================='"
+            send_cmd "echo '🚀 Django Deployment Started'"
+            send_cmd "echo '========================================='"
+            send_cmd "echo ''"
             
-            send_to_tmux "cd $PROJECT_DIR"
-            
-            echo "========================================="
-            echo "🔄 Step 3: Pulling Latest Code"
-            echo "========================================="
-            
-            send_to_tmux "git pull origin main"
+            # Step 2: Stop all services
+            send_cmd "echo '========================================="
+            send_cmd "echo '🛑 Step 1: Stopping All Services'"
+            send_cmd "echo '========================================="
+            send_cmd "pkill -f 'python manage.py runserver' || true"
+            send_cmd "pkill -f 'celery -A config worker' || true"
+            send_cmd "pkill -f 'redis-server' || true"
             sleep 2
+            send_cmd "echo '✅ All services stopped'"
+            send_cmd "echo ''"
             
-            echo "========================================="
-            echo "🐍 Step 4: Activating Virtual Environment"
-            echo "========================================="
+            # Step 3: Navigate to project
+            send_cmd "echo '========================================='"
+            send_cmd "echo '📂 Step 2: Navigating to Project'"
+            send_cmd "echo '========================================='"
+            send_cmd "cd $PROJECT_DIR"
+            send_cmd "echo '✅ Current directory: '\$(pwd)"
+            send_cmd "echo ''"
             
-            send_to_tmux "source $VENV_PATH/bin/activate"
+            # Step 4: Pull latest code
+            send_cmd "echo '========================================='"
+            send_cmd "echo '🔄 Step 3: Pulling Latest Code'"
+            send_cmd "echo '========================================='"
+            send_cmd "git pull origin main"
+            send_cmd "echo '✅ Code updated'"
+            send_cmd "echo ''"
             
-            echo "========================================="
-            echo "📦 Step 5: Installing Dependencies"
-            echo "========================================="
+            # Step 5: Activate virtual environment
+            send_cmd "echo '========================================='"
+            send_cmd "echo '🐍 Step 4: Activating Virtual Environment'"
+            send_cmd "echo '========================================='"
+            send_cmd "source $VENV_PATH/bin/activate"
+            send_cmd "echo '✅ Virtual environment activated'"
+            send_cmd "echo ''"
             
-            send_to_tmux "pip install -r requirements.txt --break-system-packages"
+            # Step 6: Install dependencies
+            send_cmd "echo '========================================='"
+            send_cmd "echo '📦 Step 5: Installing Dependencies'"
+            send_cmd "echo '========================================='"
+            send_cmd "pip install -r requirements.txt --break-system-packages --quiet"
             sleep 5
+            send_cmd "echo '✅ Dependencies installed'"
+            send_cmd "echo ''"
             
-            echo "========================================="
-            echo "🗄️ Step 6: Running Database Migrations"
-            echo "========================================="
+            # Step 7: Database migrations
+            send_cmd "echo '========================================='"
+            send_cmd "echo '🗄️ Step 6: Running Database Migrations'"
+            send_cmd "echo '========================================='"
+            send_cmd "python manage.py makemigrations"
+            sleep 2
+            send_cmd "python manage.py migrate"
+            sleep 2
+            send_cmd "echo '✅ Database migrations complete'"
+            send_cmd "echo ''"
             
-            send_to_tmux "python manage.py makemigrations"
-            sleep 3
-            send_to_tmux "python manage.py migrate"
-            sleep 3
+            # Step 8: Collect static files
+            send_cmd "echo '========================================='"
+            send_cmd "echo '📊 Step 7: Collecting Static Files'"
+            send_cmd "echo '========================================='"
+            send_cmd "python manage.py collectstatic --noinput"
+            sleep 2
+            send_cmd "echo '✅ Static files collected'"
+            send_cmd "echo ''"
             
-            echo "========================================="
-            echo "📊 Step 7: Collecting Static Files"
-            echo "========================================="
+            # Step 9: Start services
+            send_cmd "echo '========================================='"
+            send_cmd "echo '✅ Step 8: Starting All Services'"
+            send_cmd "echo '========================================='"
+        
             
-            send_to_tmux "python manage.py collectstatic --noinput"
-            sleep 3
-            
-            echo "========================================="
-            echo "✅ Step 8: Starting All Services"
-            echo "========================================="
-            
-            # Start Redis in background
-            echo "🔴 Starting Redis server..."
-            send_to_tmux "nohup redis-server > /tmp/redis.log 2>&1 &"
+            # Start Celery
+            send_cmd "echo '🔵 Starting Celery worker...'"
+            send_cmd "nohup celery -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &"
             sleep 2
             
-            # Start Celery in background
-            echo "🔵 Starting Celery worker..."
-            send_to_tmux "nohup celery -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &"
+            # Start Django
+            send_cmd "echo '🟢 Starting Django server...'"
+            send_cmd "nohup python manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &"
             sleep 2
+            send_cmd "echo ''"
             
-            # Start Django in background
-            echo "🟢 Starting Django server..."
-            send_to_tmux "nohup python manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &"
-            sleep 2
-            
-            # Clear screen for clean view
-            send_to_tmux "clear"
-            
-            # Show status
-            send_to_tmux "echo '========================================'"
-            send_to_tmux "echo '✅ Deployment Complete!'"
-            send_to_tmux "echo '========================================'"
-            send_to_tmux "echo ''"
-            send_to_tmux "echo '📍 Services Status:'"
-            send_to_tmux "echo '   🔴 Redis: Running (logs: /tmp/redis.log)'"
-            send_to_tmux "echo '   🔵 Celery: Running (logs: /tmp/celery.log)'"
-            send_to_tmux "echo '   🟢 Django: Running (logs: /tmp/django.log)'"
-            send_to_tmux "echo ''"
-            send_to_tmux "echo '🔍 View logs:'"
-            send_to_tmux "echo '   tail -f /tmp/django.log'"
-            send_to_tmux "echo '   tail -f /tmp/celery.log'"
-            send_to_tmux "echo '   tail -f /tmp/redis.log'"
-            send_to_tmux "echo ''"
-            send_to_tmux "echo '🛑 Stop all: pkill -f \"runserver|celery|redis-server\"'"
-            send_to_tmux "echo '========================================'"
+            # Final status message
+            send_cmd "echo '========================================='"
+            send_cmd "echo '✅ Deployment Complete!'"
+            send_cmd "echo '========================================='"
+            send_cmd "echo ''"
+            send_cmd "echo '📍 Services Status:'"
+            send_cmd "echo '   🔴 Redis: Running (logs: /tmp/redis.log)'"
+            send_cmd "echo '   🔵 Celery: Running (logs: /tmp/celery.log)'"
+            send_cmd "echo '   🟢 Django: Running (logs: /tmp/django.log)'"
+            send_cmd "echo ''"
+            send_cmd "echo '🔍 View logs:'"
+            send_cmd "echo '   tail -f /tmp/django.log'"
+            send_cmd "echo '   tail -f /tmp/celery.log'"
+            send_cmd "echo '   tail -f /tmp/redis.log'"
+            send_cmd "echo ''"
+            send_cmd "echo '🛑 Stop all: pkill -f \"runserver|celery|redis-server\"'"
+            send_cmd "echo '========================================='"
             
             echo ""
             echo "========================================="
             echo "✅ DEPLOYMENT SUCCESSFUL!"
             echo "========================================="
             echo ""
-            echo "📍 All services running in background on pane asses:0.0"
+            echo "📍 All commands executed in tmux pane: asses:0.0"
             echo ""
-            echo "🔍 Check deployment:"
+            echo "🔍 View deployment:"
             echo "   tmux attach -t asses"
             echo ""
             echo "📊 Service logs:"
-            echo "   Django:  tail -f /tmp/django.log"
-            echo "   Celery:  tail -f /tmp/celery.log"
-            echo "   Redis:   tail -f /tmp/redis.log"
+            echo "   tail -f /tmp/django.log"
+            echo "   tail -f /tmp/celery.log"
+            echo "   tail -f /tmp/redis.log"
             echo ""
             echo "========================================="
