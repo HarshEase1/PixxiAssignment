@@ -28,6 +28,7 @@ jobs:
             PROJECT_ROOT="$HOME/PixxiAssignment"
             PROJECT_DIR="$HOME/PixxiAssignment/"
             VENV_PATH="$HOME/PixxiAssignment/venv"
+            LOG_DIR="$HOME/logs"
 
             echo "========================================="
             echo "🚀 Preparing tmux deployment"
@@ -190,12 +191,15 @@ jobs:
 
             echo "🟢 Starting Gunicorn server..."
             nohup "$VENV_PATH/bin/gunicorn" config.wsgi:application \
-            --bind 0.0.0.0 \
+            --bind 127.0.0.1:8000 \
             --workers 2 \
-            --timeout 600 \
-            --access-logfile /tmp/gunicorn-access.log \
-            --error-logfile /tmp/gunicorn-error.log \
-            > /tmp/django.log 2>&1 &
+            --threads 4 \
+            --timeout 900 \
+            --access-logfile "$LOG_DIR/gunicorn-access.log" \
+            --error-logfile "$LOG_DIR/gunicorn-error.log" \
+            --capture-output \
+            --enable-stdio-inheritance \
+            > "$LOG_DIR/gunicorn.log" 2>&1 &
 
             sleep 2
 
@@ -218,8 +222,11 @@ jobs:
             echo "✅ Deployment Complete!"
             echo "========================================="
             echo "📊 Logs:"
-            echo "   tail -f /tmp/django.log"
-            echo "   tail -f /tmp/celery.log"
+            echo "   tail -f /root/logs/gunicorn.log"
+            echo "   tail -f /root/logs/gunicorn-error.log"
+            echo "   tail -f /root/logs/gunicorn-access.log"
+            echo "   tail -f /root/logs/celery.log"
+            echo "   tail -f /root/logs/celery-nohup.log"
             echo ""
             echo "🌐 Test API:"
             echo "   curl http://127.0.0.1:8000/api/health/"
@@ -246,6 +253,9 @@ jobs:
             echo "tmux attach -t ${TMUX_SESSION}"
             echo ""
             echo "Logs:"
-            echo "tail -f /tmp/django.log"
-            echo "tail -f /tmp/celery.log"
+            echo "tail -f /root/logs/gunicorn.log"
+            echo "tail -f /root/logs/gunicorn-error.log"
+            echo "tail -f /root/logs/gunicorn-access.log"
+            echo "tail -f /root/logs/celery.log"
+            echo "tail -f /root/logs/celery-nohup.log"
             echo "========================================="
