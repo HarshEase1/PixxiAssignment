@@ -26,6 +26,7 @@ google-auth-httplib2==0.3.1
 google-genai==1.74.0
 google-generativeai==0.8.6
 googleapis-common-protos==1.74.0
+greenlet==3.5.0
 grpcio==1.80.0
 grpcio-status==1.71.2
 gunicorn==25.3.0
@@ -40,6 +41,7 @@ Markdown==3.10.2
 openai==2.33.0
 packaging==26.2
 pillow==12.2.0
+playwright==1.59.0
 prompt_toolkit==3.0.52
 proto-plus==1.27.2
 protobuf==5.29.6
@@ -48,6 +50,7 @@ pyasn1_modules==0.4.2
 pycparser==3.0
 pydantic==2.13.3
 pydantic_core==2.46.3
+pyee==13.0.1
 pyparsing==3.3.2
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
