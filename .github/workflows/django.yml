@@ -26,8 +26,8 @@ jobs:
 
             REPO_URL="git@github.com:HarshEase1/PixxiAssignment.git"
             PROJECT_ROOT="$HOME/PixxiAssignment"
-            PROJECT_DIR="$HOME/PixxiAssignment/backend"
-            VENV_PATH="$HOME/PixxiAssignment/backend/venv"
+            PROJECT_DIR="$HOME/PixxiAssignment/"
+            VENV_PATH="$HOME/PixxiAssignment/venv"
 
             echo "========================================="
             echo "🚀 Preparing tmux deployment"
@@ -59,8 +59,8 @@ jobs:
 
             REPO_URL="git@github.com:HarshEase1/PixxiAssignment.git"
             PROJECT_ROOT="$HOME/PixxiAssignment"
-            PROJECT_DIR="$HOME/PixxiAssignment/backend"
-            VENV_PATH="$HOME/PixxiAssignment/backend/venv"
+            PROJECT_DIR="$HOME/PixxiAssignment"
+            VENV_PATH="$HOME/PixxiAssignment/venv"
 
             echo "========================================="
             echo "🚀 Django Deployment Started"
