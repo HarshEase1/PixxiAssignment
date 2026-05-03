@@ -24,19 +24,26 @@ jobs:
             TMUX_TARGET="${TMUX_SESSION}:0.0"
             DEPLOY_SCRIPT="/tmp/pixii_deploy.sh"
 
-            PROJECT_DIR="$HOME/PixiiAssigment/backend"
-            VENV_PATH="$HOME/PixiiAssigment/backend/venv"
+            REPO_URL="git@github.com:HarshEase1/PixxiAssignment.git"
+            PROJECT_ROOT="$HOME/PixxiAssignment"
+            PROJECT_DIR="$HOME/PixxiAssignment/backend"
+            VENV_PATH="$HOME/PixxiAssignment/backend/venv"
 
             echo "========================================="
             echo "🚀 Preparing tmux deployment"
             echo "========================================="
             echo "TMUX_TARGET=${TMUX_TARGET}"
+            echo "REPO_URL=${REPO_URL}"
+            echo "PROJECT_ROOT=${PROJECT_ROOT}"
             echo "PROJECT_DIR=${PROJECT_DIR}"
             echo "VENV_PATH=${VENV_PATH}"
             echo "DEPLOY_SCRIPT=${DEPLOY_SCRIPT}"
             echo "========================================="
 
-            command -v tmux >/dev/null 2>&1 || apt update && apt install -y tmux
+            if ! command -v tmux >/dev/null 2>&1; then
+              apt update
+              apt install -y tmux
+            fi
 
             if ! tmux has-session -t "${TMUX_SESSION}" 2>/dev/null; then
               tmux new-session -s "${TMUX_SESSION}" -d
@@ -50,8 +57,10 @@ jobs:
             set -e
             set -o pipefail
 
-            PROJECT_DIR="$HOME/PixiiAssigment/backend"
-            VENV_PATH="$HOME/PixiiAssigment/backend/venv"
+            REPO_URL="git@github.com:HarshEase1/PixxiAssignment.git"
+            PROJECT_ROOT="$HOME/PixxiAssignment"
+            PROJECT_DIR="$HOME/PixxiAssignment/backend"
+            VENV_PATH="$HOME/PixxiAssignment/backend/venv"
 
             echo "========================================="
             echo "🚀 Django Deployment Started"
@@ -59,11 +68,22 @@ jobs:
             date
 
             echo "📂 HOME: $HOME"
+            echo "📦 REPO_URL: $REPO_URL"
+            echo "📂 PROJECT_ROOT: $PROJECT_ROOT"
             echo "📂 PROJECT_DIR: $PROJECT_DIR"
             echo "🐍 VENV_PATH: $VENV_PATH"
 
             echo "========================================="
-            echo "🛑 Step 1: Stopping app services safely"
+            echo "🧰 Step 1: Installing required system packages"
+            echo "========================================="
+
+            apt update
+            apt install -y git python3 python3-venv python3-pip redis-server nginx lsof
+
+            echo "✅ System packages installed"
+
+            echo "========================================="
+            echo "🛑 Step 2: Stopping app services safely"
             echo "========================================="
 
             echo "Stopping anything using port 8000..."
@@ -93,66 +113,82 @@ jobs:
             echo "✅ App services stopped"
 
             echo "========================================="
-            echo "🔴 Step 2: Ensuring Redis is running"
+            echo "🔴 Step 3: Starting Redis"
             echo "========================================="
 
             systemctl enable redis-server || true
-            systemctl restart redis-server || systemctl restart redis || true
+            systemctl restart redis-server || true
             redis-cli ping || true
 
             echo "========================================="
-            echo "📂 Step 3: Entering project directory"
+            echo "🌐 Step 4: Starting Nginx"
+            echo "========================================="
+
+            systemctl enable nginx || true
+            systemctl start nginx || true
+
+            echo "========================================="
+            echo "🧹 Step 5: Removing old project folder"
+            echo "========================================="
+
+            rm -rf "$PROJECT_ROOT"
+            echo "✅ Removed old project folder if it existed"
+
+            echo "========================================="
+            echo "📥 Step 6: Cloning latest repository"
+            echo "========================================="
+
+            cd "$HOME"
+            git clone "$REPO_URL" "$PROJECT_ROOT"
+
+            echo "✅ Repository cloned"
+
+            echo "========================================="
+            echo "📂 Step 7: Entering backend directory"
             echo "========================================="
 
             cd "$PROJECT_DIR"
             pwd
+            ls -la
 
             echo "========================================="
-            echo "🔄 Step 4: Pulling latest code"
+            echo "🐍 Step 8: Creating virtual environment"
             echo "========================================="
 
-            git fetch origin main
-            git reset --hard origin/main
-            git status
-
-            echo "========================================="
-            echo "🐍 Step 5: Preparing virtual environment"
-            echo "========================================="
-
-            test -d "$VENV_PATH" || python3 -m venv "$VENV_PATH"
-
+            python3 -m venv "$VENV_PATH"
             source "$VENV_PATH/bin/activate"
+
             python --version
             pip --version
 
             echo "========================================="
-            echo "📦 Step 6: Installing dependencies"
+            echo "📦 Step 9: Installing Python dependencies"
             echo "========================================="
 
             pip install --upgrade pip
             pip install -r requirements.txt
 
             echo "========================================="
-            echo "🗄️ Step 7: Running migrations"
+            echo "🗄️ Step 10: Running migrations"
             echo "========================================="
 
             python manage.py makemigrations
             python manage.py migrate
 
             echo "========================================="
-            echo "📊 Step 8: Collecting static files"
+            echo "📊 Step 11: Collecting static files"
             echo "========================================="
 
             python manage.py collectstatic --noinput
 
             echo "========================================="
-            echo "🧪 Step 9: Running Django checks"
+            echo "🧪 Step 12: Running Django checks"
             echo "========================================="
 
             python manage.py check
 
             echo "========================================="
-            echo "✅ Step 10: Starting services"
+            echo "✅ Step 13: Starting services"
             echo "========================================="
 
             echo "🔵 Starting Celery worker..."
@@ -166,18 +202,18 @@ jobs:
             sleep 2
 
             echo "========================================="
-            echo "🌐 Step 11: Reloading Nginx"
+            echo "🌐 Step 14: Testing and reloading Nginx"
             echo "========================================="
 
             nginx -t
-            systemctl reload nginx
+            systemctl reload nginx || true
 
             echo "========================================="
-            echo "📍 Step 12: Service status"
+            echo "📍 Step 15: Service status"
             echo "========================================="
 
             ps aux | grep -E '[r]unserver|[c]elery' || true
-            systemctl status redis-server --no-pager || systemctl status redis --no-pager || true
+            systemctl status redis-server --no-pager || true
             systemctl status nginx --no-pager || true
 
             echo "========================================="
@@ -186,6 +222,9 @@ jobs:
             echo "📊 Logs:"
             echo "   tail -f /tmp/django.log"
             echo "   tail -f /tmp/celery.log"
+            echo ""
+            echo "🌐 Test API:"
+            echo "   curl http://127.0.0.1:8000/api/health/"
             echo "========================================="
             DEPLOY_EOF
 
