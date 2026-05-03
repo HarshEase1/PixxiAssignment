@@ -51,109 +51,114 @@ jobs:
             send_cmd "clear"
             
             # Step 1: Show banner
-            send_cmd "echo '========================================='"
-            send_cmd "echo '🚀 Django Deployment Started'"
-            send_cmd "echo '========================================='"
-            send_cmd "echo ''"
+            send_cmd "echo ========================================="
+            send_cmd "echo 🚀 Django Deployment Started"
+            send_cmd "echo ========================================="
+            send_cmd "echo"
             
             # Step 2: Stop all services
-            send_cmd "echo '========================================="
-            send_cmd "echo '🛑 Step 1: Stopping All Services'"
-            send_cmd "echo '========================================="
+            send_cmd "echo ========================================="
+            send_cmd "echo 🛑 Step 1: Stopping All Services"
+            send_cmd "echo ========================================="
             send_cmd "pkill -f 'python manage.py runserver' || true"
             send_cmd "pkill -f 'celery -A config worker' || true"
             send_cmd "pkill -f 'redis-server' || true"
             sleep 2
-            send_cmd "echo '✅ All services stopped'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ All services stopped"
+            send_cmd "echo"
             
             # Step 3: Navigate to project
-            send_cmd "echo '========================================='"
-            send_cmd "echo '📂 Step 2: Navigating to Project'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 📂 Step 2: Navigating to Project"
+            send_cmd "echo ========================================="
             send_cmd "cd $PROJECT_DIR"
-            send_cmd "echo '✅ Current directory: '\$(pwd)"
-            send_cmd "echo ''"
+            send_cmd "pwd"
+            send_cmd "echo ✅ Navigated to project directory"
+            send_cmd "echo"
             
             # Step 4: Pull latest code
-            send_cmd "echo '========================================='"
-            send_cmd "echo '🔄 Step 3: Pulling Latest Code'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 🔄 Step 3: Pulling Latest Code"
+            send_cmd "echo ========================================="
             send_cmd "git pull origin main"
-            send_cmd "echo '✅ Code updated'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ Code updated"
+            send_cmd "echo"
             
             # Step 5: Activate virtual environment
-            send_cmd "echo '========================================='"
-            send_cmd "echo '🐍 Step 4: Activating Virtual Environment'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 🐍 Step 4: Activating Virtual Environment"
+            send_cmd "echo ========================================="
             send_cmd "source $VENV_PATH/bin/activate"
-            send_cmd "echo '✅ Virtual environment activated'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ Virtual environment activated"
+            send_cmd "echo"
             
             # Step 6: Install dependencies
-            send_cmd "echo '========================================='"
-            send_cmd "echo '📦 Step 5: Installing Dependencies'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 📦 Step 5: Installing Dependencies"
+            send_cmd "echo ========================================="
             send_cmd "pip install -r requirements.txt --break-system-packages --quiet"
             sleep 5
-            send_cmd "echo '✅ Dependencies installed'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ Dependencies installed"
+            send_cmd "echo"
             
             # Step 7: Database migrations
-            send_cmd "echo '========================================='"
-            send_cmd "echo '🗄️ Step 6: Running Database Migrations'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 🗄️ Step 6: Running Database Migrations"
+            send_cmd "echo ========================================="
             send_cmd "python manage.py makemigrations"
             sleep 2
             send_cmd "python manage.py migrate"
             sleep 2
-            send_cmd "echo '✅ Database migrations complete'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ Database migrations complete"
+            send_cmd "echo"
             
             # Step 8: Collect static files
-            send_cmd "echo '========================================='"
-            send_cmd "echo '📊 Step 7: Collecting Static Files'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo 📊 Step 7: Collecting Static Files"
+            send_cmd "echo ========================================="
             send_cmd "python manage.py collectstatic --noinput"
             sleep 2
-            send_cmd "echo '✅ Static files collected'"
-            send_cmd "echo ''"
+            send_cmd "echo ✅ Static files collected"
+            send_cmd "echo"
             
             # Step 9: Start services
-            send_cmd "echo '========================================='"
-            send_cmd "echo '✅ Step 8: Starting All Services'"
-            send_cmd "echo '========================================='"
-        
+            send_cmd "echo ========================================="
+            send_cmd "echo ✅ Step 8: Starting All Services"
+            send_cmd "echo ========================================="
+            
+            # Start Redis
+            send_cmd "echo 🔴 Starting Redis server..."
+            send_cmd "nohup redis-server > /tmp/redis.log 2>&1 &"
+            sleep 2
             
             # Start Celery
-            send_cmd "echo '🔵 Starting Celery worker...'"
+            send_cmd "echo 🔵 Starting Celery worker..."
             send_cmd "nohup celery -A config worker --loglevel=info --pool=solo > /tmp/celery.log 2>&1 &"
             sleep 2
             
             # Start Django
-            send_cmd "echo '🟢 Starting Django server...'"
+            send_cmd "echo 🟢 Starting Django server..."
             send_cmd "nohup python manage.py runserver 0.0.0.0:8000 > /tmp/django.log 2>&1 &"
             sleep 2
-            send_cmd "echo ''"
+            send_cmd "echo"
             
             # Final status message
-            send_cmd "echo '========================================='"
-            send_cmd "echo '✅ Deployment Complete!'"
-            send_cmd "echo '========================================='"
-            send_cmd "echo ''"
-            send_cmd "echo '📍 Services Status:'"
-            send_cmd "echo '   🔴 Redis: Running (logs: /tmp/redis.log)'"
-            send_cmd "echo '   🔵 Celery: Running (logs: /tmp/celery.log)'"
-            send_cmd "echo '   🟢 Django: Running (logs: /tmp/django.log)'"
-            send_cmd "echo ''"
-            send_cmd "echo '🔍 View logs:'"
-            send_cmd "echo '   tail -f /tmp/django.log'"
-            send_cmd "echo '   tail -f /tmp/celery.log'"
-            send_cmd "echo '   tail -f /tmp/redis.log'"
-            send_cmd "echo ''"
-            send_cmd "echo '🛑 Stop all: pkill -f \"runserver|celery|redis-server\"'"
-            send_cmd "echo '========================================='"
+            send_cmd "echo ========================================="
+            send_cmd "echo ✅ Deployment Complete!"
+            send_cmd "echo ========================================="
+            send_cmd "echo"
+            send_cmd "echo 📍 Services Status:"
+            send_cmd "echo    🔴 Redis: Running"
+            send_cmd "echo    🔵 Celery: Running"
+            send_cmd "echo    🟢 Django: Running"
+            send_cmd "echo"
+            send_cmd "echo 🔍 View logs:"
+            send_cmd "echo    tail -f /tmp/django.log"
+            send_cmd "echo    tail -f /tmp/celery.log"
+            send_cmd "echo    tail -f /tmp/redis.log"
+            send_cmd "echo"
+            send_cmd "echo 🛑 Stop all: pkill -f runserver"
+            send_cmd "echo ========================================="
             
             echo ""
             echo "========================================="
