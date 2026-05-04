@@ -34,7 +34,7 @@ SECRET_KEY = 'django-insecure-f11*4+d6u8w(4&e!34l-q883s7#een1l$$(s-@1o9v!qi87^qu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["206.189.133.225", "localhost", "127.0.0.1"]
+ALLOWED_HOSTS = ["206.189.133.225", "localhost", "127.0.0.1", "clownfish-app-luf9n.ondigitalocean.app"]
 
 
 # Application definition
@@ -56,7 +56,7 @@ DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 GOOGLE_GEMINI_API_KEY = os.getenv('GOOGLE_GEMINI_API_KEY', '')
 
-BACKEND_BASE_URL = "http://localhost:8000"
+BACKEND_BASE_URL = "http://206.189.133.225"
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
@@ -89,7 +89,8 @@ REST_FRAMEWORK = {
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
-    "http://206.189.133.225:8000"
+    "http://206.189.133.225:8000",
+    "https://clownfish-app-luf9n.ondigitalocean.app/"
 ]
 
 ROOT_URLCONF = 'config.urls'
