@@ -90,7 +90,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://206.189.133.225:8000",
-    "https://clownfish-app-luf9n.ondigitalocean.app/"
+    "https://clownfish-app-luf9n.ondigitalocean.app"
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -158,7 +158,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
