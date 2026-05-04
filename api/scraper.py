@@ -1536,7 +1536,7 @@ def improve_product_image_with_openai(product, competitors=None):
         with open(file_path, "wb") as f:
             f.write(output_bytes)
 
-        backend_base_url = getattr(settings, "BACKEND_BASE_URL", "http://206.189.133.225")
+        backend_base_url = getattr(settings, "BACKEND_BASE_URL", "https://pixii.selectease.in")
         improved_url = f"{backend_base_url}{settings.MEDIA_URL}improved_products/{filename}"
 
         print(f"[IMAGE IMPROVE] Saved improved image: {improved_url}")

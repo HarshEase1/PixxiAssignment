@@ -56,7 +56,7 @@ DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
 GOOGLE_GEMINI_API_KEY = os.getenv('GOOGLE_GEMINI_API_KEY', '')
 
-BACKEND_BASE_URL = "http://206.189.133.225"
+BACKEND_BASE_URL = "https://pixii.selectease.in/"
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
