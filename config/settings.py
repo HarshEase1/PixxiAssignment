@@ -34,7 +34,7 @@ SECRET_KEY = 'django-insecure-f11*4+d6u8w(4&e!34l-q883s7#een1l$$(s-@1o9v!qi87^qu
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["206.189.133.225", "localhost", "127.0.0.1", "clownfish-app-luf9n.ondigitalocean.app"]
+ALLOWED_HOSTS = ["206.189.133.225", "localhost", "127.0.0.1", "clownfish-app-luf9n.ondigitalocean.app", "pixii.selectease.in"]
 
 
 # Application definition
@@ -90,7 +90,8 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://206.189.133.225:8000",
-    "https://clownfish-app-luf9n.ondigitalocean.app"
+    "https://clownfish-app-luf9n.ondigitalocean.app",
+    "https://pixii.selectease.in",
 ]
 
 ROOT_URLCONF = 'config.urls'
